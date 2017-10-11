@@ -69,7 +69,7 @@ def load_path(alpha,eps,BG,hard_mode = False):
     BGs_abspath = [os.path.join(BG,common_path)[:-3] + 'jpg' for common_path in common_paths]
     return np.array(alphas_abspath),np.array(epses_abspath),np.array(BGs_abspath)
 
-def load_data(batch_alpha_paths,batch_eps_paths,batch_BG_paths):
+def load_data(batch_alpha_paths,batch_trimap_paths,batch_rgb_paths):
 	
 	batch_size = batch_alpha_paths.shape[0]
 	train_batch = []
@@ -108,13 +108,20 @@ def preprocessing_single(alpha, BG, eps,name,image_size=320):
     i_UR_center = UR_center(trimap)
     #i_UR_center = [int(alpha.shape[0]/2),int(alpha.shape[1]/2)]
     train_pre = np.concatenate([trimap,alpha,BG,eps],2)
-
+    '''
+        temp:
+            0: trimap
+            1: alpha
+            2,3,4: BG
+            5,6,7: fg
+   '''
     if crop_size == 320:
         h_start_index = i_UR_center[0] - 159
         w_start_index = i_UR_center[1] - 159
         tmp = train_pre[h_start_index:h_start_index+320, w_start_index:w_start_index+320, :]
         if flip:
             tmp = tmp[:,::-1,:]
+        #rescale trimap to [0,1]
         tmp[:,:,1] = tmp[:,:,1] / 255.0
         tmp[:,:,5:] = np.expand_dims(tmp[:,:,1],2)  * tmp[:,:,5:]  # here replace eps with FG
         raw_RGB = np.expand_dims(tmp[:,:,1],2)  * tmp[:,:,5:] + np.expand_dims((1. - tmp[:,:,1]),2) * tmp[:,:,2:5]
