@@ -25,7 +25,7 @@ dataset_alpha = '/data/gezheng/data-matting/new2/alpha1280'
 dataset_eps = '/data/gezheng/data-matting/new2/eps1280'
 dataset_BG = '/data/gezheng/data-matting/new2/BG'
 
-paths_alpha,paths_eps,paths_BG = load_path(dataset_alpha,dataset_eps,dataset_BG,hard_mode = hard_mode)
+paths_alpha,paths_trimap,paths_RGB = load_path(dataset_alpha,dataset_trimap,dataset_RGB,hard_mode = hard_mode)
 
 range_size = len(paths_alpha)
 print('range_size is %d' % range_size)
@@ -390,6 +390,7 @@ pred_RGB = tf.stack(p_RGB)
 tf.summary.image('pred_RGB', pred_RGB, max_outputs = 5)
 #c_diff = tf.sqrt(tf.square(pred_RGB/255.0 - raw_RGBs/255.0) + 1e-12)
 # changed 201709
+# TODO figure out how to deal with this loss
 c_diff = tf.sqrt(tf.square(pred_RGB - raw_RGBs) + 1e-12) / 255.0
 
 alpha_loss = tf.reduce_sum(alpha_diff * wl)/(tf.reduce_sum(wl))
@@ -444,11 +445,11 @@ with tf.Session(config=tf.ConfigProto(gpu_options = gpu_options)) as sess:
             batch_index = sess.run(index_dequeue_op)
 
             batch_alpha_paths = paths_alpha[batch_index]
-            batch_eps_paths = paths_eps[batch_index]
-            batch_BG_paths = paths_BG[batch_index]
-            batch_RGBs,batch_trimaps,batch_alphas,batch_BGs,batch_FGs,RGBs_with_mean = load_data(batch_alpha_paths,batch_eps_paths,batch_BG_paths)
+            batch_trimap_paths = paths_trimap[batch_index]
+            batch_RGB_paths = paths_RGB[batch_index]
+            batch_alphas,batch_trimaps,batch_RGBs, batch_FGs RGBs_with_mean = load_data(batch_alpha_paths,batch_trimap_paths,batch_RGB_paths)
 
-            feed = {image_batch:batch_RGBs, GT_matte_batch:batch_alphas,GT_trimap:batch_trimaps, GTBG_batch:batch_BGs, GTFG_batch:batch_FGs,raw_RGBs:RGBs_with_mean}
+            feed = {image_batch:batch_RGBs, GT_matte_batch:batch_alphas,GT_trimap:batch_trimaps, GTBG_batch:batch_RGBs, GTFG_batch:batch_FGs,raw_RGBs:RGBs_with_mean}
 
             _,loss,summary_str,step= sess.run([train_op,total_loss,summary_op,global_step],feed_dict = feed)
             print('loss is %f' %loss)

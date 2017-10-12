@@ -78,15 +78,22 @@ def load_data(batch_alpha_paths,batch_trimap_paths,batch_rgb_paths):
 			
 		alpha = misc.imread(batch_alpha_paths[i],'L').astype(np.float32)
 
-		eps = misc.imread(batch_eps_paths[i]).astype(np.float32)
+		trimap = misc.imread(batch_trimap_paths[i], 'P').astype(np.float32)
 
-		BG = misc.imread(batch_BG_paths[i]).astype(np.float32)
+		rgb = misc.imread(batch_rgb_paths[i]).astype(np.float32)
+                
+                alpha = np.expand_dims(alpha,2)
+                trimap = np.expand_dims(trimap,2)
 		
-		batch_i,raw_RGB = preprocessing_single(alpha, BG, eps,batch_alpha_paths[i])	
+                fg = rgb * np.concatenate([alpha, alpha, alpha], axis=2) / 255.0
+
+		batch_i = np.concatenate([alpha, trimap, rgb - g_mean, fg],2)
+
+                batch_i = batch_i.astype(np.float32)
+
 		train_batch.append(batch_i)
-		images_without_mean_reduction.append(raw_RGB)
 	train_batch = np.stack(train_batch)
-	return train_batch[:,:,:,:3],np.expand_dims(train_batch[:,:,:,3],3),np.expand_dims(train_batch[:,:,:,4],3),train_batch[:,:,:,5:8],train_batch[:,:,:,8:],images_without_mean_reduction
+        return np.expand_dims(train_batch[:,:,:,0],3),np.expand_dims(train_batch[:,:,:,1],3),train_batch[:,:,:,2:5], train_batch[:,:,:,5:], rgb
 
 def generate_trimap(trimap,alpha):
 
@@ -95,81 +102,23 @@ def generate_trimap(trimap,alpha):
 	trimap[np.where((ndimage.grey_dilation(alpha[:,:,0],size=(k_size,k_size)) - alpha[:,:,0]!=0))] = 128
 	return trimap
 
-def preprocessing_single(alpha, BG, eps,name,image_size=320):
+def preprocessing_single(alpha, trimap, rgb,name, image_height=480, image_width=854):
 
     alpha = np.expand_dims(alpha,2)
-    trimap = np.copy(alpha)
-    trimap = generate_trimap(trimap,alpha)
+    trimap = np.expand_dims(trimap,2)
 
-    train_data = np.zeros([image_size,image_size,8])
-    crop_size = random.choice([320,480,620])
-#    crop_size = 320   
-    flip = random.choice([0,1])
-    i_UR_center = UR_center(trimap)
-    #i_UR_center = [int(alpha.shape[0]/2),int(alpha.shape[1]/2)]
-    train_pre = np.concatenate([trimap,alpha,BG,eps],2)
+    train_data = np.zeros([image_height,image_width,5])
+    train_pre = np.concatenate([alpha, trimap, rgb],2)
     '''
         temp:
-            0: trimap
-            1: alpha
-            2,3,4: BG
-            5,6,7: fg
+            0: alpha
+            1: trimap
+            2,3,4: rgb
    '''
-    if crop_size == 320:
-        h_start_index = i_UR_center[0] - 159
-        w_start_index = i_UR_center[1] - 159
-        tmp = train_pre[h_start_index:h_start_index+320, w_start_index:w_start_index+320, :]
-        if flip:
-            tmp = tmp[:,::-1,:]
-        #rescale trimap to [0,1]
-        tmp[:,:,1] = tmp[:,:,1] / 255.0
-        tmp[:,:,5:] = np.expand_dims(tmp[:,:,1],2)  * tmp[:,:,5:]  # here replace eps with FG
-        raw_RGB = np.expand_dims(tmp[:,:,1],2)  * tmp[:,:,5:] + np.expand_dims((1. - tmp[:,:,1]),2) * tmp[:,:,2:5]
-        reduced_RGB = raw_RGB - g_mean
-        tmp = np.concatenate([reduced_RGB,tmp],2)
-        train_data = tmp
-
-    if crop_size == 480:
-        h_start_index = i_UR_center[0] - 239
-        w_start_index = i_UR_center[1] - 239
-        tmp = train_pre[h_start_index:h_start_index+480, w_start_index:w_start_index+480, :]
-        if flip:
-            tmp = tmp[:,::-1,:]
-        tmp1 = np.zeros([image_size,image_size,8]).astype(np.float32)
-        tmp1[:,:,0] = misc.imresize(tmp[:,:,0].astype(np.uint8),[image_size,image_size],interp = 'nearest',mode='L').astype(np.float32)
-        tmp1[:,:,1] = misc.imresize(tmp[:,:,1].astype(np.uint8),[image_size,image_size]).astype(np.float32) / 255.0
-        tmp1[:,:,2:5] = misc.imresize(tmp[:,:,2:5].astype(np.uint8),[image_size,image_size,3]).astype(np.float32)
-        tmp1[:,:,5:] = misc.imresize(tmp[:,:,5:].astype(np.uint8),[image_size,image_size,3]).astype(np.float32)
-        tmp1[:,:,5:] = np.expand_dims(tmp1[:,:,1],2)  * tmp1[:,:,5:]  # here replace eps with FG        
-        raw_RGB = np.expand_dims(tmp1[:,:,1],2)  * tmp1[:,:,5:] + np.expand_dims((1. - tmp1[:,:,1]),2) * tmp1[:,:,2:5]
-        reduced_RGB = raw_RGB - g_mean      
-        tmp1 = np.concatenate([reduced_RGB,tmp1],2)
-        train_data = tmp1
-
-    if crop_size == 620:
-        h_start_index = i_UR_center[0] - 309
-        #boundary security
-        if h_start_index<0:
-            h_start_index = 0
-        w_start_index = i_UR_center[1] - 309
-        if w_start_index<0:
-            w_start_index = 0
-        tmp = train_pre[h_start_index:h_start_index+620, w_start_index:w_start_index+620, :]
-        if flip:
-            tmp = tmp[:,::-1,:]
-        tmp1 = np.zeros([image_size,image_size,8]).astype(np.float32)
-        tmp1[:,:,0] = misc.imresize(tmp[:,:,0].astype(np.uint8),[image_size,image_size],interp = 'nearest',mode='L').astype(np.float32)
-        tmp1[:,:,1] = misc.imresize(tmp[:,:,1].astype(np.uint8),[image_size,image_size]).astype(np.float32) / 255.0
-        tmp1[:,:,2:5] = misc.imresize(tmp[:,:,2:5].astype(np.uint8),[image_size,image_size,3]).astype(np.float32)
-        tmp1[:,:,5:] = misc.imresize(tmp[:,:,5:].astype(np.uint8),[image_size,image_size,3]).astype(np.float32)
-        tmp1[:,:,5:] = np.expand_dims(tmp1[:,:,1],2)  * tmp1[:,:,5:]  # here replace eps with FG        
-        raw_RGB = np.expand_dims(tmp1[:,:,1],2)  * tmp1[:,:,5:] + np.expand_dims((1. - tmp1[:,:,1]),2) * tmp1[:,:,2:5]
-        reduced_RGB = raw_RGB - g_mean      
-        tmp1 = np.concatenate([reduced_RGB,tmp1],2)
-        train_data = tmp1
-    train_data = train_data.astype(np.float32)
+    #rescale trimap to [0,1]
+    train_data = train_pre.astype(np.float32)
 #    misc.imsave('./train_alpha.png',train_data[:,:,4])
-    return train_data,raw_RGB
+    return train_data
 
 def load_alphamatting_data(test_alpha):
 	rgb_path = os.path.join(test_alpha,'rgb')
